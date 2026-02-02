@@ -4,7 +4,7 @@ import ntpath
 import time
 from . import util, html
 from pathlib import Path
-import wandb
+from torch.utils.tensorboard import SummaryWriter
 import os
 import torch.distributed as dist
 
@@ -54,33 +54,35 @@ class Visualizer:
         Step 4: create a logging file to store training losses
         """
         self.opt = opt  # cache the option
-        self.use_html = opt.isTrain and not opt.no_html
-        self.win_size = opt.display_winsize
-        self.name = opt.name
+        #self.use_html = opt.isTrain and not opt.no_html
+        #self.win_size = opt.display_winsize
+        self.exp_name = opt.exp_name
         self.saved = False
-        self.use_wandb = opt.use_wandb
+        #self.use_wandb = opt.use_wandb
         self.current_epoch = 0
+        self.log_name = os.path.join(opt.save_dir, self.exp_name, "loss_log.txt")
+        self.writer = SummaryWriter(log_dir=os.path.join(opt.save_dir, self.exp_name, 'logs'))
 
         # Initialize wandb if enabled
-        if self.use_wandb:
-            # Only initialize wandb on main process (rank 0)
-            if not dist.is_initialized() or dist.get_rank() == 0:
-                self.wandb_project_name = getattr(opt, "wandb_project_name", "CycleGAN-and-pix2pix")
-                self.wandb_run = wandb.init(project=self.wandb_project_name, name=opt.name, config=opt) if not wandb.run else wandb.run
-                self.wandb_run._label(repo="CycleGAN-and-pix2pix")
-            else:
-                self.wandb_run = None
+        # if self.use_wandb:
+        #     # Only initialize wandb on main process (rank 0)
+        #     if not dist.is_initialized() or dist.get_rank() == 0:
+        #         self.wandb_project_name = getattr(opt, "wandb_project_name", "CycleGAN-and-pix2pix")
+        #         self.wandb_run = wandb.init(project=self.wandb_project_name, name=opt.name, config=opt) if not wandb.run else wandb.run
+        #         self.wandb_run._label(repo="CycleGAN-and-pix2pix")
+        #     else:
+        #         self.wandb_run = None
 
-        if self.use_html:  # create an HTML object at <checkpoints_dir>/web/; images will be saved under <checkpoints_dir>/web/images/
-            self.web_dir = Path(opt.checkpoints_dir) / opt.name / "web"
-            self.img_dir = self.web_dir / "images"
-            print(f"create web directory {self.web_dir}...")
-            util.mkdirs([self.web_dir, self.img_dir])
-        # create a logging file to store training losses
-        self.log_name = Path(opt.checkpoints_dir) / opt.name / "loss_log.txt"
-        with open(self.log_name, "a") as log_file:
-            now = time.strftime("%c")
-            log_file.write(f"================ Training Loss ({now}) ================\n")
+        # if self.use_html:  # create an HTML object at <checkpoints_dir>/web/; images will be saved under <checkpoints_dir>/web/images/
+        #     self.web_dir = Path(opt.checkpoints_dir) / opt.name / "web"
+        #     self.img_dir = self.web_dir / "images"
+        #     print(f"create web directory {self.web_dir}...")
+        #     util.mkdirs([self.web_dir, self.img_dir])
+        # # create a logging file to store training losses
+        # self.log_name = Path(opt.checkpoints_dir) / opt.name / "loss_log.txt"
+        # with open(self.log_name, "a") as log_file:
+        #     now = time.strftime("%c")
+        #     log_file.write(f"================ Training Loss ({now}) ================\n")
 
     def reset(self):
         """Reset the self.saved status"""
@@ -100,39 +102,43 @@ class Visualizer:
         # Only display results on main process (rank 0)
         if "LOCAL_RANK" in os.environ and dist.is_initialized() and dist.get_rank() != 0:
             return
+        
+        for labels, image in visuals.items():
+            image_numpy = util.tensor2im(image)
+            self.writer.add_image(f"{labels}", image_numpy, total_iters, dataformats='HWC')
 
-        if self.use_wandb:
-            ims_dict = {}
-            for label, image in visuals.items():
-                image_numpy = util.tensor2im(image)
-                wandb_image = wandb.Image(image_numpy, caption=f"{label} - Step {total_iters}")
-                ims_dict[f"results/{label}"] = wandb_image
-            self.wandb_run.log(ims_dict, step=total_iters)
+        # if self.use_wandb:
+        #     ims_dict = {}
+        #     for label, image in visuals.items():
+        #         image_numpy = util.tensor2im(image)
+        #         wandb_image = wandb.Image(image_numpy, caption=f"{label} - Step {total_iters}")
+        #         ims_dict[f"results/{label}"] = wandb_image
+        #     self.wandb_run.log(ims_dict, step=total_iters)
 
-        if self.use_html and (save_result or not self.saved):  # save images to an HTML file if they haven't been saved.
-            self.saved = True
-            # save images to the disk
-            for label, image in visuals.items():
-                image_numpy = util.tensor2im(image)
-                img_path = self.img_dir / f"epoch{epoch:03d}_{label}.png"
-                util.save_image(image_numpy, img_path)
+        # if self.use_html and (save_result or not self.saved):  # save images to an HTML file if they haven't been saved.
+        #     self.saved = True
+        #     # save images to the disk
+        #     for label, image in visuals.items():
+        #         image_numpy = util.tensor2im(image)
+        #         img_path = self.img_dir / f"epoch{epoch:03d}_{label}.png"
+        #         util.save_image(image_numpy, img_path)
 
-            # update website
-            webpage = html.HTML(self.web_dir, f"Experiment name = {self.name}", refresh=1)
-            for n in range(epoch, 0, -1):
-                webpage.add_header(f"epoch [{n}]")
-                ims, txts, links = [], [], []
+        #     # update website
+        #     webpage = html.HTML(self.web_dir, f"Experiment name = {self.name}", refresh=1)
+        #     for n in range(epoch, 0, -1):
+        #         webpage.add_header(f"epoch [{n}]")
+        #         ims, txts, links = [], [], []
 
-                for label, image in visuals.items():
-                    img_path = f"epoch{n:03d}_{label}.png"
-                    ims.append(img_path)
-                    txts.append(label)
-                    links.append(img_path)
-                webpage.add_images(ims, txts, links, width=self.win_size)
-            webpage.save()
+        #         for label, image in visuals.items():
+        #             img_path = f"epoch{n:03d}_{label}.png"
+        #             ims.append(img_path)
+        #             txts.append(label)
+        #             links.append(img_path)
+        #         webpage.add_images(ims, txts, links, width=self.win_size)
+        #     webpage.save()
 
     def plot_current_losses(self, total_iters, losses):
-        """Log current losses to wandb
+        """Log current losses to tensorboard
 
         Parameters:
             total_iters (int)     -- current training iteration during this epoch
@@ -142,8 +148,8 @@ class Visualizer:
         if dist.is_initialized() and dist.get_rank() != 0:
             return
 
-        if self.use_wandb:
-            self.wandb_run.log(losses, step=total_iters)
+        for loss_name, loss_value in losses.items():
+            self.writer.add_scalar(loss_name, loss_value, total_iters)
 
     def print_current_losses(self, epoch, iters, losses, t_comp, t_data):
         """print current losses on console; also save the losses to the disk
