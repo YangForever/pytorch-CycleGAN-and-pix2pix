@@ -7,6 +7,7 @@ from pathlib import Path
 from torch.utils.tensorboard import SummaryWriter
 import os
 import torch.distributed as dist
+from torchvision.utils import make_grid
 
 
 def save_images(webpage, visuals, image_path, aspect_ratio=1.0, width=256):
@@ -58,6 +59,7 @@ class Visualizer:
         #self.win_size = opt.display_winsize
         self.exp_name = opt.exp_name
         self.saved = False
+        self.stage = opt.isTrain and "train" or "val"
         #self.use_wandb = opt.use_wandb
         self.current_epoch = 0
         self.log_name = os.path.join(opt.save_dir, self.exp_name, "loss_log.txt")
@@ -92,21 +94,23 @@ class Visualizer:
         """Set the dataset size for global step calculation"""
         self.dataset_size = dataset_size
 
-    def _calculate_global_step(self, epoch, epoch_iter):
-        """Calculate global step from epoch and epoch_iter"""
-        # Assuming epoch starts from 1 and epoch_iter is cumulative within epoch
-        return (epoch - 1) * self.dataset_size + epoch_iter
+    # def _calculate_global_step(self, epoch, epoch_iter):
+    #     """Calculate global step from epoch and epoch_iter"""
+    #     # Assuming epoch starts from 1 and epoch_iter is cumulative within epoch
+    #     return (epoch - 1) * self.dataset_size + epoch_iter
 
-    def display_current_results(self, visuals, epoch: int, total_iters: int, save_result=False):
+    def log_images(self, visuals, epoch: int):
         """Save current results to wandb and HTML file."""
         # Only display results on main process (rank 0)
         if "LOCAL_RANK" in os.environ and dist.is_initialized() and dist.get_rank() != 0:
             return
-        
-        for labels, image in visuals.items():
-            image_numpy = util.tensor2im(image)
-            self.writer.add_image(f"{labels}", image_numpy, total_iters, dataformats='HWC')
 
+        for labels, images in visuals.items():
+            #print(images.shape)
+            # making grid of images
+            image_grid = make_grid(images, normalize=True)
+            #image_numpy = util.tensor2im(images)
+            self.writer.add_image(f"{self.stage}/{labels}", image_grid, epoch)
         # if self.use_wandb:
         #     ims_dict = {}
         #     for label, image in visuals.items():
@@ -137,7 +141,7 @@ class Visualizer:
         #         webpage.add_images(ims, txts, links, width=self.win_size)
         #     webpage.save()
 
-    def plot_current_losses(self, total_iters, losses):
+    def log_current_losses(self, total_iters, losses):
         """Log current losses to tensorboard
 
         Parameters:
@@ -149,7 +153,7 @@ class Visualizer:
             return
 
         for loss_name, loss_value in losses.items():
-            self.writer.add_scalar(loss_name, loss_value, total_iters)
+            self.writer.add_scalar(self.stage + '/' + loss_name, loss_value, total_iters)
 
     def print_current_losses(self, epoch, iters, losses, t_comp, t_data):
         """print current losses on console; also save the losses to the disk
@@ -171,4 +175,4 @@ class Visualizer:
         # Only save to log file on main process (rank 0)
         if local_rank == 0:
             with open(self.log_name, "a") as log_file:
-                log_file.write(f"{message}\n")  # save the message
+                log_file.write(f"{message}")  # save the message
