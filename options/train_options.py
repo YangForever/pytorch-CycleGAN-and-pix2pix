@@ -13,7 +13,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--log_train_iter', type=int, default=400, help='frequency of showing training results on screen')
         #parser.add_argument('--update_html_freq', type=int, default=1000, help='frequency of saving training results to html')
         parser.add_argument('--print_freq', type=int, default=100, help='frequency of showing training results on console')
-        #parser.add_argument('--no_html', action='store_true', help='do not save intermediate training results to [opt.checkpoints_dir]/[opt.name]/web/')
+        # parser.add_argument('--no_html', action='store_true', help='do not save intermediate training results to [opt.checkpoints_dir]/[opt.name]/web/')
         # network saving and loading parameters
         parser.add_argument('--save_latest_freq', type=int, default=5000, help='frequency of saving the latest results')
         parser.add_argument('--save_epoch_freq', type=int, default=10, help='frequency of saving checkpoints at the end of epochs')
@@ -30,6 +30,12 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--pool_size', type=int, default=50, help='the size of image buffer that stores previously generated images')
         parser.add_argument('--lr_policy', type=str, default='linear', help='learning rate policy. [linear | step | plateau | cosine]')
         parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations')
+
+        # hipct histology style transfer parameters
+        parser.add_argument('--fold', type=int, default=0, help='which fold to use for training')
+        parser.add_argument('--modality1', type=str, default='histology', help='modality 1 for style transfer')
+        parser.add_argument('--modality2', type=str, default='hipct', help='modality 2 for style transfer')
+        parser.add_argument('--json_dir', type=str, default='data/training_json', help='directory of json files for training data')
 
         self.isTrain = True
         return parser
