@@ -59,7 +59,6 @@ class Visualizer:
         #self.win_size = opt.display_winsize
         self.exp_name = opt.exp_name
         self.saved = False
-        self.stage = opt.isTrain and "train" or "val"
         #self.use_wandb = opt.use_wandb
         self.current_epoch = 0
         self.log_name = os.path.join(opt.save_dir, self.exp_name, "loss_log.txt")
@@ -99,7 +98,7 @@ class Visualizer:
     #     # Assuming epoch starts from 1 and epoch_iter is cumulative within epoch
     #     return (epoch - 1) * self.dataset_size + epoch_iter
 
-    def log_images(self, visuals, epoch: int):
+    def log_images(self, visuals, epoch: int, stage: str):
         """Save current results to wandb and HTML file."""
         # Only display results on main process (rank 0)
         if "LOCAL_RANK" in os.environ and dist.is_initialized() and dist.get_rank() != 0:
@@ -110,7 +109,7 @@ class Visualizer:
             # making grid of images
             image_grid = make_grid(images, normalize=True)
             #image_numpy = util.tensor2im(images)
-            self.writer.add_image(f"{self.stage}/{labels}", image_grid, epoch)
+            self.writer.add_image(f"{stage}/{labels}", image_grid, epoch)
         # if self.use_wandb:
         #     ims_dict = {}
         #     for label, image in visuals.items():
@@ -141,7 +140,7 @@ class Visualizer:
         #         webpage.add_images(ims, txts, links, width=self.win_size)
         #     webpage.save()
 
-    def log_current_losses(self, total_iters, losses):
+    def log_current_losses(self, total_iters, losses, stage):
         """Log current losses to tensorboard
 
         Parameters:
@@ -153,9 +152,9 @@ class Visualizer:
             return
 
         for loss_name, loss_value in losses.items():
-            self.writer.add_scalar(self.stage + '/' + loss_name, loss_value, total_iters)
+            self.writer.add_scalar(stage + '/' + loss_name, loss_value, total_iters)
 
-    def print_current_losses(self, epoch, iters, losses, t_comp, t_data):
+    def print_current_losses(self, epoch, iters, losses, t_comp):
         """print current losses on console; also save the losses to the disk
 
         Parameters:
@@ -163,13 +162,12 @@ class Visualizer:
             iters (int) -- current training iteration during this epoch (reset to 0 at the end of every epoch)
             losses (OrderedDict) -- training losses stored in the format of (name, float) pairs
             t_comp (float) -- computational time per data point (normalized by batch_size)
-            t_data (float) -- data loading time per data point (normalized by batch_size)
+            # t_data (float) -- data loading time per data point (normalized by batch_size)
         """
         local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        message = f"[Rank {local_rank}] (epoch: {epoch}, iters: {iters}, time: {t_comp:.3f}, data: {t_data:.3f}) "
+        message = f"[Rank {local_rank}] (epoch: {epoch}, iters: {iters}, time: {t_comp:.3f}) "
         for k, v in losses.items():
             message += f", {k}: {v:.3f}"
-        message += "\n"
         print(message)  # print the message on ALL ranks with rank info
 
         # Only save to log file on main process (rank 0)
